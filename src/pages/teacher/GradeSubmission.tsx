@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabaseClient';
 import Navbar from '../../components/Navbar';
 import {
   ArrowLeft, Clock, Users, CheckCircle, FileText, ExternalLink,
-  Star, MessageSquare, Loader2, AlertCircle, BookOpen, Award
+  Star, MessageSquare, Loader2, AlertCircle, BookOpen, Award, X, Edit2,
 } from 'lucide-react';
 
 interface Task {
@@ -30,19 +30,24 @@ interface Submission {
   };
 }
 
+interface GradeModal {
+  submissionId: number;
+  studentName: string;
+  nilai: string;
+  feedback: string;
+}
+
 export default function GradeSubmission() {
   const { taskId } = useParams();
   const navigate = useNavigate();
   const [task, setTask] = useState<Task | null>(null);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
-  const [grading, setGrading] = useState<{ [id: number]: { nilai: string; feedback: string } }>({});
-  const [saving, setSaving] = useState<number | null>(null);
+  const [modal, setModal] = useState<GradeModal | null>(null);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetchData();
-  }, [taskId]);
+  useEffect(() => { fetchData(); }, [taskId]);
 
   const fetchData = async () => {
     const [{ data: tugasData }, { data: subData }] = await Promise.all([
@@ -52,203 +57,281 @@ export default function GradeSubmission() {
         .eq('task_id', taskId)
         .order('submitted_at', { ascending: true }),
     ]);
-
     setTask(tugasData);
     setSubmissions(subData ?? []);
-
-    // Init grading state
-    const initGrading: typeof grading = {};
-    subData?.forEach(s => {
-      initGrading[s.id] = { nilai: s.nilai?.toString() ?? '', feedback: s.feedback ?? '' };
-    });
-    setGrading(initGrading);
     setLoading(false);
   };
 
   const getSignedUrl = async (filePath: string) => {
     const { data } = await supabase.storage
       .from('assignment-files')
-      .createSignedUrl(filePath, 60 * 60); // 1 hour
+      .createSignedUrl(filePath, 60 * 60);
     if (data?.signedUrl) window.open(data.signedUrl, '_blank');
   };
 
-  const handleGrade = async (submissionId: number) => {
-    const g = grading[submissionId];
-    const nilaiNum = parseFloat(g.nilai);
+  const openModal = (sub: Submission) => {
+    setError('');
+    setModal({
+      submissionId: sub.id,
+      studentName: sub.profiles?.nama ?? '',
+      nilai: sub.nilai?.toString() ?? '',
+      feedback: sub.feedback ?? '',
+    });
+  };
 
+  const closeModal = () => { setModal(null); setError(''); };
+
+  const handleGrade = async () => {
+    if (!modal) return;
+    const nilaiNum = parseFloat(modal.nilai);
     if (isNaN(nilaiNum) || nilaiNum < 0 || nilaiNum > 100) {
-      setError('Nilai harus antara 0 - 100');
+      setError('Nilai harus antara 0 – 100');
       return;
     }
-
-    setSaving(submissionId);
+    setSaving(true);
     setError('');
-
-    const { error } = await supabase
+    const { error: dbErr } = await supabase
       .from('submission')
-      .update({ nilai: nilaiNum, feedback: g.feedback, status: 'graded' })
-      .eq('id', submissionId);
+      .update({ nilai: nilaiNum, feedback: modal.feedback, status: 'graded' })
+      .eq('id', modal.submissionId);
 
-    if (error) setError('Gagal menyimpan nilai');
-    else {
+    if (dbErr) {
+      setError('Gagal menyimpan nilai, coba lagi.');
+    } else {
       setSubmissions(prev =>
-        prev.map(s => s.id === submissionId
-          ? { ...s, nilai: nilaiNum, feedback: g.feedback, status: 'graded' }
+        prev.map(s => s.id === modal.submissionId
+          ? { ...s, nilai: nilaiNum, feedback: modal.feedback, status: 'graded' }
           : s
         )
       );
+      closeModal();
     }
-    setSaving(null);
+    setSaving(false);
   };
 
   const gradedCount = submissions.filter(s => s.status === 'graded').length;
 
   return (
-    <div className="min-h-screen bg-[#0f172a]">
+    <div className="page-wrapper">
       <Navbar />
-      <main className="max-w-5xl mx-auto px-4 py-8">
-        <button
-          onClick={() => navigate('/teacher/dashboard')}
-          className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm mb-6"
-        >
-          <ArrowLeft size={16} />
+
+      {/* ── Grading Modal ─────────────────────────── */}
+      {modal && (
+        <div className="modal-backdrop animate-fade-in" onClick={closeModal}>
+          <div className="modal-box animate-scale-in" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                  Nilai Tugas
+                </p>
+                <h3 className="text-lg font-bold mt-0.5" style={{ color: 'var(--text-heading)' }}>
+                  {modal.studentName}
+                </h3>
+              </div>
+              <button onClick={closeModal} className="btn-ghost !p-1.5">
+                <X size={18} />
+              </button>
+            </div>
+
+            {error && (
+              <div className="alert alert-error mb-4 text-sm">
+                <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                {error}
+              </div>
+            )}
+
+            {/* Nilai input */}
+            <div className="mb-4">
+              <label className="label">Nilai (0 – 100)</label>
+              <div className="relative">
+                <Star size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--yellow)' }} />
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  placeholder="Masukkan nilai..."
+                  className="input-field pl-9"
+                  value={modal.nilai}
+                  onChange={e => setModal(prev => prev ? { ...prev, nilai: e.target.value } : null)}
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {/* Feedback */}
+            <div className="mb-6">
+              <label className="label">Catatan / Feedback <span className="normal-case font-normal">(opsional)</span></label>
+              <div className="relative">
+                <MessageSquare size={14} className="absolute left-3 top-3.5" style={{ color: 'var(--text-muted)' }} />
+                <textarea
+                  placeholder="Tulis catatan untuk siswa..."
+                  className="input-field pl-9 resize-none"
+                  rows={3}
+                  value={modal.feedback}
+                  onChange={e => setModal(prev => prev ? { ...prev, feedback: e.target.value } : null)}
+                />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button onClick={closeModal} className="btn-secondary flex-1 justify-center">Batal</button>
+              <button onClick={handleGrade} disabled={saving} className="btn-primary flex-1 justify-center">
+                {saving ? <Loader2 size={15} className="animate-spin" /> : <Award size={15} />}
+                {saving ? 'Menyimpan...' : 'Simpan Nilai'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Page content ──────────────────────────── */}
+      <main className="page-content" style={{ maxWidth: '860px' }}>
+        <button onClick={() => navigate('/teacher/dashboard')} className="back-link">
+          <ArrowLeft size={15} />
           Kembali ke Dashboard
         </button>
 
         {loading ? (
-          <div className="flex justify-center py-20">
-            <Loader2 className="animate-spin text-indigo-400" size={36} />
+          <div className="flex justify-center py-24">
+            <Loader2 className="animate-spin" size={34} style={{ color: 'var(--accent-light)' }} />
           </div>
         ) : (
           <>
-            {/* Task Info */}
+            {/* Task Info card */}
             <div className="card mb-6 animate-fade-in">
               <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-indigo-500/20 flex items-center justify-center shrink-0">
-                  <BookOpen className="text-indigo-400" size={22} />
+                <div className="stat-icon shrink-0" style={{ background: 'var(--accent-soft)' }}>
+                  <BookOpen size={18} style={{ color: 'var(--accent-light)' }} />
                 </div>
-                <div className="flex-1">
-                  <h1 className="text-xl font-bold text-white">{task?.judul}</h1>
-                  {task?.deskripsi && <p className="text-slate-400 text-sm mt-1">{task.deskripsi}</p>}
+                <div className="flex-1 min-w-0">
+                  <h1 className="text-lg font-bold truncate">{task?.judul}</h1>
+                  {task?.deskripsi && (
+                    <p className="text-sm mt-1 line-clamp-2" style={{ color: 'var(--text-muted)' }}>
+                      {task.deskripsi}
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-4 mt-3">
-                    <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                      <Clock size={13} />
-                      Deadline: {task?.deadline && new Date(task.deadline).toLocaleDateString('id-ID', { dateStyle: 'full' })}
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                      <Users size={13} />
+                    <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+                      <Clock size={12} />
+                      {task?.deadline && new Date(task.deadline).toLocaleDateString('id-ID', { dateStyle: 'long' })}
+                    </span>
+                    <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+                      <Users size={12} />
                       {submissions.length} pengumpulan
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-green-400">
-                      <CheckCircle size={13} />
+                    </span>
+                    <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--green)' }}>
+                      <CheckCircle size={12} />
                       {gradedCount} sudah dinilai
-                    </div>
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {error && (
-              <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-3 border border-red-500/20 mb-4">
-                <AlertCircle size={16} />
-                {error}
-              </div>
-            )}
-
-            {/* Submissions */}
+            {/* Submission list */}
             {submissions.length === 0 ? (
               <div className="card text-center py-16">
-                <FileText className="mx-auto text-slate-600 mb-4" size={48} />
-                <p className="text-slate-400 font-medium">Belum ada siswa yang mengumpulkan</p>
+                <FileText className="mx-auto mb-3" size={40} style={{ color: 'var(--text-subtle)' }} />
+                <p className="font-semibold" style={{ color: 'var(--text-muted)' }}>
+                  Belum ada siswa yang mengumpulkan
+                </p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {submissions.map((sub) => (
-                  <div key={sub.id} className="card animate-fade-in">
-                    <div className="flex flex-col lg:flex-row lg:items-start gap-4">
-                      {/* Student Info */}
-                      <div className="flex items-center gap-3 lg:w-48 shrink-0">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
-                          {sub.profiles?.nama?.[0]?.toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="text-white font-semibold text-sm">{sub.profiles?.nama}</p>
-                          <p className="text-slate-400 text-xs">{sub.profiles?.kelas}</p>
-                          <p className="text-slate-500 text-xs mt-0.5">
-                            {new Date(sub.submitted_at).toLocaleDateString('id-ID')}
-                          </p>
-                        </div>
+              <div className="space-y-3">
+                {submissions.map((sub, idx) => (
+                  <div key={sub.id} className="card animate-fade-in" style={{ animationDelay: `${idx * 40}ms` }}>
+                    <div className="flex items-center gap-4">
+                      {/* Avatar */}
+                      <div
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
+                        style={{ background: 'linear-gradient(135deg, #6366f1, #7c3aed)', color: '#fff' }}
+                      >
+                        {sub.profiles?.nama?.[0]?.toUpperCase()}
                       </div>
 
-                      {/* File */}
-                      <div className="flex-1">
-                        <button
-                          onClick={() => getSignedUrl(sub.file_url)}
-                          className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors text-sm bg-indigo-500/10 rounded-lg px-3 py-2 border border-indigo-500/20 w-full sm:w-auto"
-                        >
-                          <FileText size={14} />
-                          <span className="truncate max-w-[180px]">{sub.file_name || 'Lihat File Tugas'}</span>
-                          <ExternalLink size={12} className="shrink-0 ml-auto" />
-                        </button>
-
-                        {/* Grading Form */}
-                        <div className="mt-3 space-y-2">
-                          <div className="flex gap-2">
-                            <div className="relative w-24 shrink-0">
-                              <Star size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-yellow-500" />
-                              <input
-                                type="number"
-                                min={0}
-                                max={100}
-                                placeholder="Nilai"
-                                className="input-field pl-8 text-center"
-                                value={grading[sub.id]?.nilai ?? ''}
-                                onChange={e => setGrading(prev => ({
-                                  ...prev,
-                                  [sub.id]: { ...prev[sub.id], nilai: e.target.value }
-                                }))}
-                              />
-                            </div>
-                            <div className="relative flex-1">
-                              <MessageSquare size={14} className="absolute left-2.5 top-3 text-slate-500" />
-                              <input
-                                type="text"
-                                placeholder="Catatan / Feedback (opsional)"
-                                className="input-field pl-8"
-                                value={grading[sub.id]?.feedback ?? ''}
-                                onChange={e => setGrading(prev => ({
-                                  ...prev,
-                                  [sub.id]: { ...prev[sub.id], feedback: e.target.value }
-                                }))}
-                              />
-                            </div>
-                            <button
-                              onClick={() => handleGrade(sub.id)}
-                              disabled={saving === sub.id}
-                              className="btn-primary shrink-0"
-                            >
-                              {saving === sub.id
-                                ? <Loader2 size={14} className="animate-spin" />
-                                : <Award size={14} />
-                              }
-                              {saving === sub.id ? 'Menyimpan...' : 'Simpan Nilai'}
-                            </button>
-                          </div>
-                        </div>
+                      {/* Student info */}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm truncate" style={{ color: 'var(--text-heading)' }}>
+                          {sub.profiles?.nama}
+                        </p>
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                          {sub.profiles?.kelas} ·{' '}
+                          {new Date(sub.submitted_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                        </p>
                       </div>
 
-                      {/* Status Badge */}
-                      <div className="shrink-0">
+                      {/* File button */}
+                      <button
+                        onClick={() => getSignedUrl(sub.file_url)}
+                        className="hidden sm:flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                        style={{
+                          background: 'var(--accent-soft)',
+                          color: 'var(--accent-light)',
+                          border: '1px solid var(--accent-border)',
+                        }}
+                      >
+                        <FileText size={13} />
+                        <span className="max-w-[120px] truncate">{sub.file_name || 'Lihat File'}</span>
+                        <ExternalLink size={11} />
+                      </button>
+
+                      {/* Grade / status */}
+                      <div className="flex items-center gap-2 shrink-0">
                         {sub.status === 'graded' ? (
-                          <div className="flex flex-col items-end gap-1">
-                            <span className="badge badge-graded"><CheckCircle size={10} /> Sudah Dinilai</span>
-                            <span className="text-2xl font-bold text-emerald-400">{sub.nilai}</span>
-                          </div>
+                          <>
+                            <div className="text-right hidden sm:block">
+                              <p className="text-xl font-extrabold" style={{ color: 'var(--green)' }}>
+                                {sub.nilai}
+                              </p>
+                              {sub.feedback && (
+                                <p className="text-[10px] max-w-[120px] truncate" style={{ color: 'var(--text-muted)' }}>
+                                  {sub.feedback}
+                                </p>
+                              )}
+                            </div>
+                            <span className="badge badge-graded">
+                              <CheckCircle size={9} /> Dinilai
+                            </span>
+                          </>
                         ) : (
-                          <span className="badge badge-submitted"><Clock size={10} /> Menunggu</span>
+                          <span className="badge badge-submitted">
+                            <Clock size={9} /> Menunggu
+                          </span>
                         )}
+
+                        {/* Edit / grade button */}
+                        <button
+                          onClick={() => openModal(sub)}
+                          className="btn-primary !py-1.5 !px-2.5 !text-xs"
+                          title={sub.status === 'graded' ? 'Edit Nilai' : 'Beri Nilai'}
+                        >
+                          {sub.status === 'graded'
+                            ? <Edit2 size={13} />
+                            : <Award size={13} />
+                          }
+                          <span className="hidden sm:inline">
+                            {sub.status === 'graded' ? 'Edit' : 'Nilai'}
+                          </span>
+                        </button>
                       </div>
                     </div>
+
+                    {/* Mobile file button */}
+                    <button
+                      onClick={() => getSignedUrl(sub.file_url)}
+                      className="sm:hidden mt-3 flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg w-full"
+                      style={{
+                        background: 'var(--accent-soft)',
+                        color: 'var(--accent-light)',
+                        border: '1px solid var(--accent-border)',
+                      }}
+                    >
+                      <FileText size={13} />
+                      {sub.file_name || 'Lihat File Tugas'}
+                      <ExternalLink size={11} className="ml-auto" />
+                    </button>
                   </div>
                 ))}
               </div>

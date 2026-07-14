@@ -29,25 +29,20 @@ export default function DashboardTeacher() {
   const [stats, setStats] = useState<Stats>({ totalTugas: 0, totalSiswa: 0, tugasAktif: 0, totalSubmission: 0 });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
     try {
-      // Fetch tasks
       const { data: tugasData } = await supabase
         .from('tugas')
         .select('*, submission(count)')
         .order('deadline', { ascending: true });
 
-      // Fetch students count
       const { count: siswaCount } = await supabase
         .from('profiles')
         .select('*', { count: 'exact', head: true })
         .eq('role', 'student');
 
-      // Fetch total submissions
       const { count: subCount } = await supabase
         .from('submission')
         .select('*', { count: 'exact', head: true });
@@ -75,77 +70,75 @@ export default function DashboardTeacher() {
   };
 
   const statCards = [
-    { label: 'Total Tugas', value: stats.totalTugas, icon: BookOpen, color: 'indigo' },
-    { label: 'Siswa Terdaftar', value: stats.totalSiswa, icon: Users, color: 'purple' },
-    { label: 'Tugas Aktif', value: stats.tugasAktif, icon: Clock, color: 'yellow' },
-    { label: 'Total Pengumpulan', value: stats.totalSubmission, icon: CheckCircle, color: 'green' },
+    { label: 'Total Tugas', value: stats.totalTugas, icon: BookOpen, color: 'var(--accent-light)', bg: 'var(--accent-soft)' },
+    { label: 'Siswa Terdaftar', value: stats.totalSiswa, icon: Users, color: '#c084fc', bg: 'rgba(192,132,252,0.12)' },
+    { label: 'Tugas Aktif', value: stats.tugasAktif, icon: Clock, color: 'var(--yellow)', bg: 'var(--yellow-soft)' },
+    { label: 'Total Pengumpulan', value: stats.totalSubmission, icon: CheckCircle, color: 'var(--green)', bg: 'var(--green-soft)' },
   ];
 
   return (
-    <div className="min-h-screen bg-[#0f172a]">
+    <div className="page-wrapper">
       <Navbar />
-      <main className="max-w-6xl mx-auto px-4 py-8">
+      <main className="page-content">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-white">
-              Selamat datang, <span className="gradient-text">{profile?.nama}</span> 👋
+            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>
+              Dashboard Guru
+            </p>
+            <h1 className="text-2xl font-extrabold">
+              Halo, <span className="gradient-text">{profile?.nama}</span> 👋
             </h1>
-            <p className="text-slate-400 text-sm mt-1">Kelola dan pantau tugas siswa dari sini</p>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+              Kelola dan pantau tugas siswa dari sini
+            </p>
           </div>
-          <button
-            onClick={() => navigate('/teacher/create-task')}
-            className="btn-primary shrink-0"
-          >
-            <Plus size={18} />
+          <button onClick={() => navigate('/teacher/create-task')} className="btn-primary shrink-0">
+            <Plus size={16} />
             Buat Tugas Baru
           </button>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {statCards.map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="card hover:border-indigo-500/30 transition-all">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${
-                color === 'indigo' ? 'bg-indigo-500/20' :
-                color === 'purple' ? 'bg-purple-500/20' :
-                color === 'yellow' ? 'bg-yellow-500/20' : 'bg-green-500/20'
-              }`}>
-                <Icon size={18} className={
-                  color === 'indigo' ? 'text-indigo-400' :
-                  color === 'purple' ? 'text-purple-400' :
-                  color === 'yellow' ? 'text-yellow-400' : 'text-green-400'
-                } />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+          {statCards.map(({ label, value, icon: Icon, color, bg }) => (
+            <div key={label} className="stat-card">
+              <div className="stat-icon" style={{ background: bg }}>
+                <Icon size={17} style={{ color }} />
               </div>
-              <p className="text-2xl font-bold text-white">{loading ? '...' : value}</p>
-              <p className="text-slate-400 text-xs mt-0.5">{label}</p>
+              <p className="stat-value">{loading ? '—' : value}</p>
+              <p className="stat-label">{label}</p>
             </div>
           ))}
         </div>
 
         {/* Task List */}
-        <div className="flex items-center gap-2 mb-5">
-          <TrendingUp size={18} className="text-indigo-400" />
-          <h2 className="text-lg font-bold text-white">Daftar Tugas</h2>
-          <span className="ml-auto text-xs text-slate-500">{tasks.length} tugas</span>
+        <div className="section-heading">
+          <TrendingUp size={17} style={{ color: 'var(--accent-light)' }} />
+          <h2>Daftar Tugas</h2>
+          <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>
+            {tasks.length} tugas
+          </span>
         </div>
 
         {loading ? (
-          <div className="flex justify-center py-16">
-            <Loader2 className="animate-spin text-indigo-400" size={36} />
+          <div className="flex justify-center py-20">
+            <Loader2 className="animate-spin" size={32} style={{ color: 'var(--accent-light)' }} />
           </div>
         ) : tasks.length === 0 ? (
           <div className="card text-center py-16">
-            <BookOpen className="mx-auto text-slate-600 mb-4" size={48} />
-            <p className="text-slate-400 font-medium">Belum ada tugas</p>
-            <p className="text-slate-500 text-sm mt-1">Klik "Buat Tugas Baru" untuk memulai</p>
+            <BookOpen className="mx-auto mb-3" size={40} style={{ color: 'var(--text-subtle)' }} />
+            <p className="font-semibold" style={{ color: 'var(--text-muted)' }}>Belum ada tugas</p>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-subtle)' }}>
+              Klik "Buat Tugas Baru" untuk memulai
+            </p>
             <button onClick={() => navigate('/teacher/create-task')} className="btn-primary mt-5 mx-auto">
-              <Plus size={16} />
+              <Plus size={15} />
               Buat Tugas Pertama
             </button>
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2">
             {tasks.map(task => (
               <TaskCard
                 key={task.id}
