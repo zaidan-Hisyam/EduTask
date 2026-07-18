@@ -46,7 +46,7 @@ export default function Register() {
           </div>
           <h2 className="text-lg font-bold mb-2">Akun Berhasil Dibuat!</h2>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            Silakan cek email untuk konfirmasi, lalu masuk ke akun Anda.
+            Akun Anda telah aktif. Silakan masuk ke akun Anda.
           </p>
           <p className="text-xs mt-3" style={{ color: 'var(--text-subtle)' }}>
             Mengalihkan ke halaman login...
